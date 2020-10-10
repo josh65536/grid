@@ -285,6 +285,23 @@ impl<T: Clone> Grid<T> {
         self.data.iter()
     }
 
+    /// Returns an iterator over the whole grid, starting from the first row and column.
+    /// Each element is a tuple containing the (column index, row index) position and a value.
+    /// ```
+    /// use grid::*;
+    /// let grid: Grid<u8> = grid![[1,2][3,4]];
+    /// let mut iter = grid.iter_xy();
+    /// assert_eq!(iter.next(), Some(((0, 0), &1)));
+    /// assert_eq!(iter.next(), Some(((1, 0), &2)));
+    /// assert_eq!(iter.next(), Some(((0, 1), &3)));
+    /// assert_eq!(iter.next(), Some(((1, 1), &4)));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    pub fn iter_xy(&self) -> impl Iterator<Item = ((usize, usize), &T)> {
+        let cols = self.cols;
+        self.data.iter().enumerate().map(move |(i, v)| ((i % cols, i / cols), v))
+    }
+
     /// Returns an mutable iterator over the whole grid that allows modifying each value.
     /// ```
     /// use grid::*;
@@ -296,6 +313,22 @@ impl<T: Clone> Grid<T> {
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<T> {
         self.data.iter_mut()
+    }
+
+    /// Returns an mutable iterator over the whole grid that allows modifying each value.
+    /// Each element is a tuple containing the (column index, row index) position and a value.
+    /// ```
+    /// use grid::*;
+    /// let mut grid: Grid<u8> = grid![[1,2][3,4]];
+    /// let mut iter = grid.iter_mut_xy();
+    /// let next = iter.next();
+    /// let next = iter.next();
+    /// assert_eq!(next, Some(((1, 0), &mut 2)));
+    /// *next.unwrap().1 = 10;
+    /// ```
+    pub fn iter_mut_xy(&mut self) -> impl Iterator<Item = ((usize, usize), &mut T)> {
+        let cols = self.cols;
+        self.data.iter_mut().enumerate().map(move |(i, v)| ((i % cols, i / cols), v))
     }
 
     /// Returns an iterator over a column.
