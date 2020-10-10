@@ -18,6 +18,9 @@ branch = "master"
 [badges.maintenance]
 status = "actively-developed"
 
+[dependencies]
+serde = { version = "1.0", features = ["serde_derive"], optional = true }
+
 [dev-dependencies]
 criterion = "0.3.1"
 rand="0.7.3"

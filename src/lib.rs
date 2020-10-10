@@ -30,6 +30,10 @@ grid.push_row(vec![7,8,9]);
 assert_eq!(grid, grid![[1,2,3][4,5,6][7,8,9]])
  ```
 */
+#[cfg(feature = "serde")]
+#[macro_use]
+extern crate serde;
+
 use std::cmp::Eq;
 use std::fmt;
 use std::iter::StepBy;
@@ -110,6 +114,7 @@ macro_rules! grid {
 /// Also the number of rows and columns are stored in the grid data structure.
 ///
 /// The grid data is stored in a row-major memory layout.
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Grid<T> {
     data: Vec<T>,
     cols: usize,
