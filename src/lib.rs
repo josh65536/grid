@@ -299,7 +299,10 @@ impl<T: Clone> Grid<T> {
     /// ```
     pub fn iter_xy(&self) -> impl Iterator<Item = ((usize, usize), &T)> {
         let cols = self.cols;
-        self.data.iter().enumerate().map(move |(i, v)| ((i % cols, i / cols), v))
+        self.data
+            .iter()
+            .enumerate()
+            .map(move |(i, v)| ((i % cols, i / cols), v))
     }
 
     /// Returns an mutable iterator over the whole grid that allows modifying each value.
@@ -328,7 +331,10 @@ impl<T: Clone> Grid<T> {
     /// ```
     pub fn iter_mut_xy(&mut self) -> impl Iterator<Item = ((usize, usize), &mut T)> {
         let cols = self.cols;
-        self.data.iter_mut().enumerate().map(move |(i, v)| ((i % cols, i / cols), v))
+        self.data
+            .iter_mut()
+            .enumerate()
+            .map(move |(i, v)| ((i % cols, i / cols), v))
     }
 
     /// Returns an iterator over a column.
@@ -486,6 +492,50 @@ impl<T: Clone> Grid<T> {
         self.cols = input_row_len;
     }
 
+    /// Add a grid to another grid as new rows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use grid::*;
+    /// let mut grid: Grid<u8> = grid![[1, 2, 3][3, 4, 5]];
+    /// let rows = grid![[6, 7, 8][1, 2, 1]];
+    /// grid.push_rows(rows);
+    /// assert_eq!(grid.rows(), 4);
+    /// assert_eq!(grid.cols(), 3);
+    /// assert_eq!(grid[2][0], 6);
+    /// assert_eq!(grid[2][1], 7);
+    /// assert_eq!(grid[2][2], 8);
+    /// assert_eq!(grid[3][0], 1);
+    /// assert_eq!(grid[3][1], 2);
+    /// assert_eq!(grid[3][2], 1);
+    /// ```
+    ///
+    /// Can also be used to init an empty grid:
+    ///
+    /// ```
+    /// use grid::*;
+    /// let mut grid: Grid<u8> = grid![];
+    /// let rows = grid![[1,2,3]];
+    /// grid.push_rows(rows);
+    /// assert_eq!(grid.size(), (1, 3));
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` has rows and the grids don't have the same row length.
+    pub fn push_rows(&mut self, grid: Grid<T>) {
+        if self.rows > 0 && self.cols != grid.cols {
+            panic!(
+                "pushed rows do not match. Row length must be {:?}, but was {:?}.",
+                self.cols, grid.cols
+            )
+        }
+        self.data.extend(grid.data);
+        self.rows += grid.rows;
+        self.cols = grid.cols
+    }
+
     /// Add a new column to the grid.
     ///
     /// *Important:*
@@ -535,6 +585,70 @@ impl<T: Clone> Grid<T> {
         self.rows = input_col_len;
     }
 
+    /// Add a grid to another grid as new columns.
+    ///
+    /// *Important:*
+    /// Please note that `Grid` uses a Row-Major memory layout. Therefore, the `push_cols()`
+    /// operation requires quite a lot of memory shifting and will be significantly slower compared
+    /// to a `push_rows()` operation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use grid::*;
+    /// let mut grid: Grid<u8> = grid![[1, 2, 3][3, 4, 5]];
+    /// let cols = grid![[4,6][5,7]];
+    /// grid.push_cols(cols);
+    /// assert_eq!(grid.cols(), 5);
+    /// assert_eq!(grid.rows(), 2);
+    /// assert_eq!(grid[0][3], 4);
+    /// assert_eq!(grid[1][3], 5);
+    /// assert_eq!(grid[0][4], 6);
+    /// assert_eq!(grid[1][4], 7);
+    /// ```
+    ///
+    /// Can also be used to init an empty grid:
+    ///
+    /// ```
+    /// use grid::*;
+    /// let mut grid: Grid<u8> = grid![];
+    /// let cols = grid![[1][2][3]];
+    /// grid.push_cols(cols);
+    /// assert_eq!(grid.size(), (3, 1));
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` has columns and the grids don't have the same column length.
+    pub fn push_cols(&mut self, grid: Grid<T>) {
+        if self.cols > 0 && grid.rows != self.rows {
+            panic!(
+                "pushed column does not match. Length must be {:?}, but was {:?}.",
+                self.rows, grid.rows
+            )
+        }
+
+        if self.cols == 0 {
+            *self = grid;
+            return;
+        }
+
+        if grid.cols == 0 {
+            return;
+        }
+
+        self.data.reserve(grid.data.len());
+        self.data = self
+            .data
+            .chunks_exact(self.cols)
+            .zip(grid.data.chunks_exact(grid.cols))
+            .flat_map(|(a, b)| a.iter().chain(b.iter()).cloned())
+            .collect::<Vec<_>>();
+
+        self.cols += grid.cols;
+        self.rows = grid.rows;
+    }
+
     /// Removes the last row from a grid and returns it, or None if it is empty.
     ///
     /// # Examples
@@ -556,6 +670,36 @@ impl<T: Clone> Grid<T> {
         } else {
             return None;
         }
+    }
+
+    /// Removes the last `num_rows` rows from a grid and returns them as a grid
+    ///
+    /// # Examples
+    /// ```
+    /// use grid::*;
+    /// let mut grid = grid![[1,2,3][4,5,6][8,9,7]];
+    /// assert_eq![grid.pop_rows(2), grid![[4,5,6][8,9,7]]];
+    /// assert_eq![grid.size(), (1, 3)];
+    /// assert_eq![grid.pop_rows(1), grid![[1,2,3]]];
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the grid has less rows than requested
+    pub fn pop_rows(&mut self, num_rows: usize) -> Grid<T> {
+        if self.rows < num_rows {
+            panic!(
+                "Grid has {} rows, which is less than {}",
+                self.rows, num_rows
+            );
+        }
+
+        let vec = self
+            .data
+            .drain((self.cols * (self.rows - num_rows))..)
+            .collect::<Vec<_>>();
+        self.rows -= num_rows;
+        Grid::from_vec(vec, self.cols)
     }
 
     /// Removes the last column from a grid and returns it, or None if it is empty.
@@ -590,6 +734,45 @@ impl<T: Clone> Grid<T> {
         }
     }
 
+    /// Removes the last `num_cols` columns from a grid and returns them as a grid.
+    ///
+    /// Note that this operation is much slower than the `pop_rows()` because the memory layout
+    /// of `Grid` is row-major and removing a column requires a lot of move operations.
+    ///
+    /// # Examples
+    /// ```
+    /// use grid::*;
+    /// let mut grid = grid![[1,2,3][4,5,6]];
+    /// assert_eq![grid.pop_cols(2), grid![[2,3][5,6]]];
+    /// assert_eq![grid.size(), (2, 1)];
+    /// assert_eq![grid.pop_cols(1), grid![[1][4]]];
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the grid has less columns than requested
+    pub fn pop_cols(&mut self, num_cols: usize) -> Grid<T> {
+        if self.cols < num_cols {
+            panic!(
+                "Grid has {} columns, which is less than {}",
+                self.cols, num_cols
+            );
+        }
+
+        let new_size = self.cols - num_cols;
+        let grid = Grid::from_vec(self
+            .data
+            .chunks_exact(self.cols)
+            .flat_map(|r| r[new_size..].iter().cloned())
+            .collect(), num_cols);
+        self.data = self.data
+            .chunks_exact(self.cols)
+            .flat_map(|r| r[..new_size].iter().cloned())
+            .collect();
+        self.cols = new_size;
+        grid
+    }
+
     /// Insert a new row at the index and shifts all rows after down.
     ///
     /// # Examples
@@ -604,10 +787,17 @@ impl<T: Clone> Grid<T> {
     /// ```
     pub fn insert_row(&mut self, index: usize, row: Vec<T>) {
         if row.len() != self.cols {
-            panic!("Inserted row must be of length {}, but was {}.", self.cols, row.len());
+            panic!(
+                "Inserted row must be of length {}, but was {}.",
+                self.cols,
+                row.len()
+            );
         }
         if index > self.rows {
-            panic!("Out of range. Index was {}, but must be less or equal to {}.", index, self.cols);
+            panic!(
+                "Out of range. Index was {}, but must be less or equal to {}.",
+                index, self.cols
+            );
         }
         self.rows += 1;
         let data_idx = index * self.cols;
@@ -615,9 +805,9 @@ impl<T: Clone> Grid<T> {
     }
 
     /// Insert a new column at the index.
-    /// 
+    ///
     /// Important! Insertion of columns is a lot slower than the lines insertion.
-    /// This is because of the memory layout of the grid data structure. 
+    /// This is because of the memory layout of the grid data structure.
     ///
     /// # Examples
     /// ```
@@ -630,10 +820,17 @@ impl<T: Clone> Grid<T> {
     /// ```
     pub fn insert_col(&mut self, index: usize, col: Vec<T>) {
         if col.len() != self.rows {
-            panic!("Inserted col must be of length {}, but was {}.", self.rows, col.len());
+            panic!(
+                "Inserted col must be of length {}, but was {}.",
+                self.rows,
+                col.len()
+            );
         }
         if index > self.cols {
-            panic!("Out of range. Index was {}, but must be less or equal to {}.", index, self.rows);
+            panic!(
+                "Out of range. Index was {}, but must be less or equal to {}.",
+                index, self.rows
+            );
         }
         for (row_iter, col_val) in col.iter().enumerate() {
             let data_idx = row_iter * self.cols + index + row_iter;
@@ -641,7 +838,7 @@ impl<T: Clone> Grid<T> {
         }
         self.cols += 1;
     }
-    
+
     /// Returns a reference to the internal data structure of the grid.
     ///
     /// Grid uses a row major layout.
@@ -655,7 +852,7 @@ impl<T: Clone> Grid<T> {
     /// assert_eq!(flat, &vec![1,2,3,4,5,6]);
     /// ```
     pub fn flatten(&self) -> &Vec<T> {
-        return &self.data
+        return &self.data;
     }
 }
 
@@ -720,8 +917,8 @@ mod test {
     fn insert_col_at_end() {
         let mut grid: Grid<u8> = Grid::from_vec(vec![1, 2, 3, 4], 2);
         grid.insert_col(2, vec![5, 6]);
-        assert_eq!(grid[0], [1 ,2, 5]);
-        assert_eq!(grid[1], [3 ,4, 6]);
+        assert_eq!(grid[0], [1, 2, 5]);
+        assert_eq!(grid[1], [3, 4, 6]);
     }
 
     #[test]
@@ -731,14 +928,13 @@ mod test {
         grid.insert_col(3, vec![4, 5]);
     }
 
-
     #[test]
     fn insert_row_at_end() {
         let mut grid: Grid<u8> = Grid::from_vec(vec![1, 2, 3, 4], 2);
         grid.insert_row(2, vec![5, 6]);
-        assert_eq!(grid[0], [1 ,2]);
-        assert_eq!(grid[1], [3 ,4]);
-        assert_eq!(grid[2], [5 ,6]);
+        assert_eq!(grid[0], [1, 2]);
+        assert_eq!(grid[1], [3, 4]);
+        assert_eq!(grid[2], [5, 6]);
     }
 
     #[test]
@@ -838,7 +1034,7 @@ mod test {
 
     #[test]
     fn push_col_small() {
-        let mut grid: Grid<u8> = grid![  
+        let mut grid: Grid<u8> = grid![
                     [0, 1, 2]
                     [10, 11, 12]];
         grid.push_col(vec![3, 13]);
@@ -855,7 +1051,7 @@ mod test {
 
     #[test]
     fn push_col() {
-        let mut grid: Grid<char> = grid![  
+        let mut grid: Grid<char> = grid![
                     ['a', 'b', 'c', 'd']
                     ['a', 'b', 'c', 'd']
                     ['a', 'b', 'c', 'd']];
